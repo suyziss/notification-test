@@ -75,7 +75,7 @@ public class MainActivity extends android.app.Activity {
             startActivity(settings); Toast.makeText(this, "Разрешите точные будильники и нажмите запуск ещё раз", Toast.LENGTH_LONG).show(); return;
         }
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS); return;
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS); return;
         }
         long trigger = System.currentTimeMillis() + total*1000L;
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, alarmIntent);
