@@ -17,11 +17,9 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import androidx.activity.ComponentActivity;
-import androidx.core.app.ActivityCompat;
 import java.util.Locale;
 
-public class MainActivity extends ComponentActivity {
+public class MainActivity extends android.app.Activity {
     private EditText hours, minutes, seconds;
     private TextView status;
     private AlarmManager alarmManager;
@@ -35,7 +33,7 @@ public class MainActivity extends ComponentActivity {
         alarmIntent = PendingIntent.getBroadcast(this, 77, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         buildUi();
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
     }
 
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
