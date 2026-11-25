@@ -5,6 +5,7 @@ import android.app.*;
 import android.content.*;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,8 +31,8 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle b){super.onCreate(b); getWindow().setStatusBarColor(Color.rgb(10,11,17)); getWindow().setNavigationBarColor(Color.rgb(10,11,17)); alarms=(AlarmManager)getSystemService(ALARM_SERVICE); load(); buildShell(); showPage(0); askPermissions();}
     int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
-    void load(){try{active=new JSONArray(getPreferences(0).getString(ACTIVE,"[]"));history=new JSONArray(getPreferences(0).getString("history","[]"));}catch(Exception e){active=new JSONArray();history=new JSONArray();}}
-    void save(){getPreferences(0).edit().putString(ACTIVE,active.toString()).putString("history",history.toString()).apply();}
+    void load(){try{active=new JSONArray(getPreferences(0).getString(ACTIVE,"[]"));history=new JSONArray(getSharedPreferences("notification_history",0).getString("items","[]"));}catch(Exception e){active=new JSONArray();history=new JSONArray();}}
+    void save(){getPreferences(0).edit().putString(ACTIVE,active.toString()).apply();}
     TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
     LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);return l;}
     LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w<0?w:dp(w),h<0?h:dp(h));}
