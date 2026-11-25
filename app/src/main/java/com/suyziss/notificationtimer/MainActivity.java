@@ -1,86 +1,89 @@
 package com.suyziss.notificationtimer;
 
 import android.Manifest;
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.content.Intent;
+import android.app.*;
+import android.content.*;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.view.Gravity;
-import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-import java.util.Locale;
+import android.view.*;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.*;
+import org.json.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
-public class MainActivity extends android.app.Activity {
-    private EditText hours, minutes, seconds;
-    private TextView status;
-    private AlarmManager alarmManager;
-    private PendingIntent alarmIntent;
-    private static final int REQUEST_NOTIFICATIONS = 42;
+public class MainActivity extends Activity {
+    private static final String PREF="suyziss_timer_store";
+    private static final String ACTIVE="active";
+    private static final int REQ_NOTIFICATIONS=42;
+    private LinearLayout root, content, activeList;
+    private EditText titleInput,hours,minutes,seconds;
+    private TextView status, countLabel;
+    private AlarmManager alarms;
+    private int page=0;
+    private int accent=Color.rgb(151,126,255);
+    private JSONArray active=new JSONArray(), history=new JSONArray();
 
-    @Override protected void onCreate(Bundle state) {
-        super.onCreate(state);
-        alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
-        Intent intent = new Intent(this, AlarmReceiver.class);
-        alarmIntent = PendingIntent.getBroadcast(this, 77, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        buildUi();
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+    @Override public void onCreate(Bundle b){super.onCreate(b); getWindow().setStatusBarColor(Color.rgb(10,11,17)); getWindow().setNavigationBarColor(Color.rgb(10,11,17)); alarms=(AlarmManager)getSystemService(ALARM_SERVICE); load(); buildShell(); showPage(0); askPermissions();}
+    int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
+    void load(){try{active=new JSONArray(getPreferences(0).getString(ACTIVE,"[]"));history=new JSONArray(getPreferences(0).getString("history","[]"));}catch(Exception e){active=new JSONArray();history=new JSONArray();}}
+    void save(){getPreferences(0).edit().putString(ACTIVE,active.toString()).putString("history",history.toString()).apply();}
+    TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
+    LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);return l;}
+    LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w<0?w:dp(w),h<0?h:dp(h));}
+    GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
+    TextView heading(String s){TextView t=text(s,23,Color.WHITE);t.setTypeface(null,Typeface.BOLD);t.setPadding(0,dp(8),0,dp(12));return t;}
+    TextView small(String s){return text(s,12,Color.rgb(155,158,175));}
+    Button button(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(14);b.setAllCaps(false);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(accent));return b;}
+    void buildShell(){
+        root=column();root.setBackgroundColor(Color.rgb(10,11,17));root.setPadding(dp(20),dp(18),dp(20),dp(12));
+        LinearLayout brand=new LinearLayout(this);brand.setGravity(Gravity.CENTER_VERTICAL);
+        TextView logo=text("S",22,Color.WHITE);logo.setGravity(Gravity.CENTER);logo.setTypeface(null,Typeface.BOLD);logo.setBackground(bg(accent,13));brand.addView(logo,lp(42,42));
+        LinearLayout names=column();names.setPadding(dp(12),0,0,0);TextView n=text("NOTIFICATION",13,Color.WHITE);n.setTypeface(null,Typeface.BOLD);TextView sub=small("TIMER  /  SUYZISS LAB");names.addView(n);names.addView(sub);brand.addView(names,new LinearLayout.LayoutParams(0,-2,1));
+        TextView ver=small("v2.0");brand.addView(ver);root.addView(brand,lp(-1,54));
+        content=column();ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout nav=new LinearLayout(this);nav.setGravity(Gravity.CENTER);nav.setPadding(0,dp(8),0,0);
+        String[] labels={"Таймер","Шаблоны","История","Настройки"};for(int i=0;i<4;i++){final int p=i;TextView tab=text(labels[i],12,Color.WHITE);tab.setGravity(Gravity.CENTER);tab.setPadding(dp(5),dp(12),dp(5),dp(12));tab.setOnClickListener(v->showPage(p));nav.addView(tab,new LinearLayout.LayoutParams(0,dp(48),1));}
+        root.addView(nav);setContentView(root);
     }
-
-    private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
-    private TextView label(String text, int size) {
-        TextView t = new TextView(this); t.setText(text); t.setTextColor(Color.WHITE); t.setTextSize(size); return t;
+    void showPage(int p){page=p;content.removeAllViews();if(p==0)timerPage();else if(p==1)presetsPage();else if(p==2)historyPage();else settingsPage();}
+    void card(LinearLayout parent,View child){LinearLayout box=column();box.setPadding(dp(15),dp(14),dp(15),dp(14));box.setBackground(bg(Color.rgb(24,26,37),18));box.addView(child);LinearLayout.LayoutParams q=lp(-1,-2);q.bottomMargin=dp(12);parent.addView(box,q);}
+    EditText input(String hint,String value,int size){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setText(value);e.setTextColor(Color.WHITE);e.setHintTextColor(Color.GRAY);e.setTextSize(size);e.setGravity(Gravity.CENTER);e.setInputType(2);e.setSelectAllOnFocus(true);e.setBackground(bg(Color.rgb(37,39,53),12));return e;}
+    void timerPage(){
+        content.addView(heading("Таймеры"));
+        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);countLabel=small(active.length()+" активных таймеров");top.addView(countLabel,new LinearLayout.LayoutParams(0,-2,1));TextView tag=text("MULTI-ALARM",10,accent);top.addView(tag);content.addView(top,lp(-1,28));
+        LinearLayout form=column();form.setPadding(dp(15),dp(14),dp(15),dp(15));form.setBackground(bg(Color.rgb(24,26,37),18));
+        form.addView(small("НОВОЕ УВЕДОМЛЕНИЕ"));titleInput=input("Название напоминания","Напоминание",16);titleInput.setInputType( android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);LinearLayout.LayoutParams tp=lp(-1,50);tp.topMargin=dp(10);form.addView(titleInput,tp);
+        LinearLayout fields=new LinearLayout(this);fields.setGravity(Gravity.CENTER);fields.setPadding(0,dp(12),0,dp(10));hours=input("00","00",25);minutes=input("05","05",25);seconds=input("00","00",25);fields.addView(hours,new LinearLayout.LayoutParams(0,dp(62),1));fields.addView(text(":",25,Color.WHITE));fields.addView(minutes,new LinearLayout.LayoutParams(0,dp(62),1));fields.addView(text(":",25,Color.WHITE));fields.addView(seconds,new LinearLayout.LayoutParams(0,dp(62),1));form.addView(fields);
+        LinearLayout units=new LinearLayout(this);String[] u={"ЧАСЫ","МИНУТЫ","СЕКУНДЫ"};for(String x:u){TextView t=small(x);t.setGravity(Gravity.CENTER);units.addView(t,new LinearLayout.LayoutParams(0,-2,1));}form.addView(units);
+        Button add=button("＋  Добавить таймер");add.setOnClickListener(v->schedule());LinearLayout.LayoutParams ap=lp(-1,52);ap.topMargin=dp(14);form.addView(add,ap);content.addView(form,lp(-1,-2));
+        TextView activeTitle=heading("Запланировано");activeTitle.setTextSize(19);activeTitle.setPadding(0,dp(20),0,dp(10));content.addView(activeTitle);
+        activeList=column();content.addView(activeList);renderActive();
+        TextView note=small("Таймеры сохраняются после закрытия приложения. Для точного срабатывания Android может запросить специальное разрешение.");note.setPadding(0,dp(8),0,dp(16));content.addView(note);
     }
-    private void buildUi() {
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER_HORIZONTAL); root.setPadding(dp(24), dp(36), dp(24), dp(24)); root.setBackgroundColor(Color.rgb(12,14,20));
-        TextView brand = label("SUYZISS  /  TOOLS", 13); brand.setTextColor(Color.rgb(164,151,255)); brand.setLetterSpacing(.18f);
-        root.addView(brand, new LinearLayout.LayoutParams(-1, dp(32)));
-        TextView title = label("Таймер", 34); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD); title.setPadding(0, dp(12), 0, dp(4)); root.addView(title);
-        TextView subtitle = label("Установите время — уведомление придёт автоматически", 14); subtitle.setTextColor(Color.LTGRAY); root.addView(subtitle);
-        View spacer = new View(this); root.addView(spacer, new LinearLayout.LayoutParams(1, dp(48)));
-        TextView prompt = label("ДЛИТЕЛЬНОСТЬ", 12); prompt.setTextColor(Color.rgb(170,170,185)); root.addView(prompt, new LinearLayout.LayoutParams(-1, dp(28)));
-        LinearLayout fields = new LinearLayout(this); fields.setGravity(Gravity.CENTER); fields.setOrientation(LinearLayout.HORIZONTAL);
-        hours = field("00"); minutes = field("05"); seconds = field("00");
-        fields.addView(hours, weight()); fields.addView(separator(":")); fields.addView(minutes, weight()); fields.addView(separator(":")); fields.addView(seconds, weight());
-        root.addView(fields, new LinearLayout.LayoutParams(-1, dp(76)));
-        TextView units = label("ЧАСЫ                         МИНУТЫ                       СЕКУНДЫ", 10); units.setTextColor(Color.GRAY); units.setGravity(Gravity.CENTER); root.addView(units, new LinearLayout.LayoutParams(-1, dp(30)));
-        status = label("Готов к запуску", 14); status.setTextColor(Color.rgb(180,180,195)); status.setGravity(Gravity.CENTER); status.setPadding(0, dp(28), 0, dp(24)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(76)));
-        Button start = button("Запустить таймер", Color.rgb(133,112,255)); start.setOnClickListener(v -> startTimer()); root.addView(start, new LinearLayout.LayoutParams(-1, dp(56)));
-        Button cancel = button("Отменить", Color.rgb(42,44,56)); cancel.setOnClickListener(v -> cancelTimer()); LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, dp(52)); cp.topMargin = dp(12); root.addView(cancel, cp);
-        TextView foot = label("Работает в фоне • Android 10 и новее", 12); foot.setTextColor(Color.GRAY); foot.setGravity(Gravity.CENTER); LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(-1, dp(60)); fp.topMargin = dp(26); root.addView(foot, fp);
-        setContentView(root);
+    void schedule(){
+        long h=num(hours),m=num(minutes),s=num(seconds),total=h*3600+m*60+s;
+        if(total<=0||total>315360000L){Toast.makeText(this,"Укажите длительность от 1 секунды до 10 лет",0).show();return;}
+        if(Build.VERSION.SDK_INT>=31&&!alarms.canScheduleExactAlarms()){startActivity(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,Uri.parse("package:"+getPackageName())));Toast.makeText(this,"Разрешите точные будильники и повторите",1).show();return;}
+        if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=0){requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},REQ_NOTIFICATIONS);return;}
+        int id=(int)(System.currentTimeMillis()&0x7fffffff);String title=titleInput.getText().toString().trim();if(title.isEmpty())title="Напоминание";
+        long at=System.currentTimeMillis()+total*1000L;
+        try{JSONObject item=new JSONObject();item.put("id",id);item.put("title",title);item.put("at",at);item.put("created",System.currentTimeMillis());active.put(item);save();Intent i=new Intent(this,AlarmReceiver.class).putExtra("id",id).putExtra("title",title);PendingIntent pi=PendingIntent.getBroadcast(this,id,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pi);hours.setText("00");minutes.setText("05");seconds.setText("00");titleInput.setText("Напоминание");((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(titleInput.getWindowToken(),0);showPage(0);Toast.makeText(this,"Таймер добавлен",0).show();}catch(Exception e){Toast.makeText(this,"Не удалось создать таймер",0).show();}
     }
-    private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, dp(68), 1); }
-    private EditText field(String hint) {
-        EditText e = new EditText(this); e.setSingleLine(true); e.setText(hint); e.setTextColor(Color.WHITE); e.setTextSize(28); e.setGravity(Gravity.CENTER); e.setSelectAllOnFocus(true); e.setInputType(2); e.setBackgroundColor(Color.rgb(30,32,43)); return e;
+    long num(EditText e){try{return Math.max(0,Long.parseLong(e.getText().toString()));}catch(Exception x){return 0;}}
+    void renderActive(){activeList.removeAllViews();countLabel.setText(active.length()+" активных таймеров");if(active.length()==0){TextView empty=small("Пока пусто. Создайте первый таймер выше.");empty.setPadding(0,dp(8),0,dp(18));activeList.addView(empty);return;}
+        ArrayList<JSONObject> items=new ArrayList<>();for(int i=0;i<active.length();i++)items.add(active.optJSONObject(i));Collections.sort(items,(a,b)->Long.compare(a.optLong("at"),b.optLong("at")));
+        for(JSONObject o:items){if(o==null)continue;LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);LinearLayout info=column();TextView name=text(o.optString("title"),15,Color.WHITE);name.setTypeface(null,Typeface.BOLD);long left=Math.max(0,(o.optLong("at")-System.currentTimeMillis())/1000);TextView time=small(String.format(Locale.getDefault(),"Через %02d:%02d:%02d",left/3600,(left%3600)/60,left%60));info.addView(name);info.addView(time);row.addView(info,new LinearLayout.LayoutParams(0,-2,1));TextView cancel=text("ОТМЕНА",10,Color.rgb(255,130,150));cancel.setPadding(dp(8),dp(12),0,dp(12));int id=o.optInt("id");cancel.setOnClickListener(v->cancel(id));row.addView(cancel);card(activeList,row);}
     }
-    private TextView separator(String s) { TextView t=label(s,28); t.setGravity(Gravity.CENTER); return t; }
-    private Button button(String text, int color) { Button b=new Button(this); b.setText(text); b.setTextColor(Color.WHITE); b.setTextSize(15); b.setAllCaps(false); b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(color)); return b; }
-    private long read(EditText e) { try { return Math.max(0, Long.parseLong(e.getText().toString().trim())); } catch(Exception ex) { return 0; } }
-    private void startTimer() {
-        long total = read(hours)*3600L + read(minutes)*60L + read(seconds);
-        if (total <= 0) { Toast.makeText(this, "Укажите время больше нуля", Toast.LENGTH_SHORT).show(); return; }
-        if (total > 315360000L) { Toast.makeText(this, "Слишком большая длительность", Toast.LENGTH_SHORT).show(); return; }
-        if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
-            Intent settings = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:" + getPackageName()));
-            startActivity(settings); Toast.makeText(this, "Разрешите точные будильники и нажмите запуск ещё раз", Toast.LENGTH_LONG).show(); return;
-        }
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS); return;
-        }
-        long trigger = System.currentTimeMillis() + total*1000L;
-        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, alarmIntent);
-        status.setText("Уведомление запланировано через " + String.format(Locale.getDefault(), "%02d:%02d:%02d", total/3600, (total%3600)/60, total%60));
-        Toast.makeText(this, "Таймер запущен", Toast.LENGTH_SHORT).show();
-    }
-    private void cancelTimer() { alarmManager.cancel(alarmIntent); status.setText("Таймер отменён"); Toast.makeText(this, "Таймер отменён", Toast.LENGTH_SHORT).show(); }
+    void cancel(int id){Intent i=new Intent(this,AlarmReceiver.class);PendingIntent pi=PendingIntent.getBroadcast(this,id,i,PendingIntent.FLAG_NO_CREATE|PendingIntent.FLAG_IMMUTABLE);if(pi!=null){alarms.cancel(pi);pi.cancel();}JSONArray next=new JSONArray();for(int j=0;j<active.length();j++){JSONObject o=active.optJSONObject(j);if(o!=null&&o.optInt("id")!=id)next.put(o);}active=next;save();showPage(0);}
+    void presetsPage(){content.addView(heading("Быстрые шаблоны"));content.addView(small("ОДНО КАСАНИЕ — И ТАЙМЕР УЖЕ ЗАПЛАНИРОВАН"));String[][] data={{"1 минута","00:01:00"},{"5 минут","00:05:00"},{"10 минут","00:10:00"},{"15 минут","00:15:00"},{"25 минут · Focus","00:25:00"},{"30 минут","00:30:00"},{"45 минут","00:45:00"},{"1 час","01:00:00"},{"2 часа","02:00:00"},{"Завтра · 12 часов","12:00:00"}};for(String[] d:data){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);TextView name=text(d[0],16,Color.WHITE);row.addView(name,new LinearLayout.LayoutParams(0,-2,1));Button b=button("Старт");b.setOnClickListener(v->{String[] t=d[1].split(":");hours.setText(t[0]);minutes.setText(t[1]);seconds.setText(t[2]);titleInput.setText(d[0]);showPage(0);schedule();});row.addView(b,lp(92,44));card(content,row);}}
+    void historyPage(){content.addView(heading("История"));content.addView(small("Последние сработавшие уведомления"));if(history.length()==0){content.addView(small("История появится после первого уведомления."));return;}for(int i=history.length()-1;i>=0;i--){JSONObject o=history.optJSONObject(i);if(o==null)continue;LinearLayout row=column();row.addView(text(o.optString("title"),15,Color.WHITE));row.addView(small(new SimpleDateFormat("dd.MM.yyyy  HH:mm",Locale.getDefault()).format(new Date(o.optLong("at")))));card(content,row);}Button clear=button("Очистить историю");clear.setOnClickListener(v->{history=new JSONArray();save();showPage(2);});content.addView(clear,lp(-1,50));}
+    void settingsPage(){content.addView(heading("Настройки"));String[] opts={"Внешний вид","Тёмная AMOLED-тема активна","Версия приложения · 2.0","Минимальная версия Android · 10 (SDK 29+)","Уведомления и точные будильники","Данные хранятся локально на устройстве","SUYZISS LAB"};for(String s:opts){TextView t=text(s,15,Color.WHITE);t.setPadding(dp(14),dp(17),dp(14),dp(17));card(content,t);}Button clear=button("Отменить все таймеры");clear.setOnClickListener(v->{JSONArray old=active;for(int i=0;i<old.length();i++){JSONObject o=old.optJSONObject(i);if(o!=null)cancelAlarmOnly(o.optInt("id"));}active=new JSONArray();save();showPage(3);});content.addView(clear,lp(-1,50));}
+    void cancelAlarmOnly(int id){Intent i=new Intent(this,AlarmReceiver.class);PendingIntent p=PendingIntent.getBroadcast(this,id,i,PendingIntent.FLAG_NO_CREATE|PendingIntent.FLAG_IMMUTABLE);if(p!=null){alarms.cancel(p);p.cancel();}}
+    void askPermissions(){if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=0)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},REQ_NOTIFICATIONS);}
+    @Override protected void onResume(){super.onResume();if(content!=null&&page==0)showPage(0);}
 }
