@@ -18,5 +18,6 @@ public class AlarmReceiver extends BroadcastReceiver {
         if(Build.VERSION.SDK_INT<26)b.setPriority(Notification.PRIORITY_HIGH);
         try{manager.notify(id,b.build());}catch(SecurityException ignored){}
         try{SharedPreferences p=context.getSharedPreferences("notification_history",Context.MODE_PRIVATE);JSONArray a=new JSONArray(p.getString("items","[]"));JSONObject o=new JSONObject();o.put("id",id);o.put("title",title);o.put("at",System.currentTimeMillis());a.put(o);while(a.length()>100){JSONArray n=new JSONArray();for(int i=1;i<a.length();i++)n.put(a.get(i));a=n;}p.edit().putString("items",a.toString()).apply();}catch(Exception ignored){}
+        try{SharedPreferences p=context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE);JSONArray old=new JSONArray(p.getString("active","[]"));JSONArray next=new JSONArray();for(int i=0;i<old.length();i++){JSONObject item=old.optJSONObject(i);if(item!=null&&item.optInt("id")!=id)next.put(item);}p.edit().putString("active",next.toString()).apply();}catch(Exception ignored){}
     }
 }
